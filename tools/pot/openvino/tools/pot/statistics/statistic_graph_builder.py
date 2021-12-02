@@ -31,14 +31,16 @@ class StatisticGraphBuilder:
         for algo_name, node_stats in copy_stat_aliases.items():
             for node_name, stats in node_stats.items():
                 node_name_in_graph = node_name[0] if isinstance(node_name, tuple) else node_name
+                node_port = node_name[1] if isinstance(node_name, tuple) else None
                 node_name_in_graph = node_name_in_graph.replace('/pre_fq_input', '')
                 node = get_node_by_name(model, node_name_in_graph)
                 node_in_main_graph = get_node_by_name(model, node_name_in_graph.split('|')[0])
                 model_graph = node_in_main_graph.graph
                 for stat, _ in list(stats.items()):
                     if not isinstance(stat, Statistic) or not stat.kwargs.get('inplace_statistics', False):
-                        if node_name_in_graph not in nodes_names:
-                            nodes_names.append(node_name_in_graph)
+                        node_name_ = (node_name_in_graph, node_port) if node_port else node_name_in_graph
+                        if node_name_ not in nodes_names:
+                            nodes_names.append(node_name_)
                         continue
                     type_stat = stat.kwargs['type']
                     add_output_node, op_name = getattr(self, f'insert_{type_stat}')(model_graph,
@@ -47,8 +49,9 @@ class StatisticGraphBuilder:
                                                                                     node.name,
                                                                                     **stat.kwargs)
                     if add_output_node:
-                        if node_name_in_graph not in nodes_names:
-                            nodes_names.append(op_name)
+                        op_name_ = (op_name, node_port) if node_port else op_name
+                        if op_name_ not in nodes_names:
+                            nodes_names.append(op_name_)
                         class_statistic = TensorStatistic if isinstance(stat, TensorStatistic) else TensorStatisticAxis
                         fn = get_stats_function(ACTIVATIONS, type_stat, stat.kwargs.get('granularity'),
                                                 'compute_statistic')
@@ -71,8 +74,9 @@ class StatisticGraphBuilder:
 
                 # add output if node in subgraph
                 if model_graph != node.graph:
-                    if node_name_in_graph in nodes_names:
-                        nodes_names.remove(node_name_in_graph)
+                    node_name_ = (node_name_in_graph, node_port) if node_port else node_name_in_graph
+                    if node_name_ in nodes_names:
+                        nodes_names.remove(node_name_)
 
                     # Don't need adding extra output to the same node, but for another algo
                     if node_name_in_graph in output_to_node_names.values():
